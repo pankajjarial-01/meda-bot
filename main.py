@@ -110,7 +110,7 @@ async def insert_data(request: Request):
 
 
 # Endpoint to query the chatbot
-@app.post("/meda-bot")
+@app.post("/meda-chatbot")
 async def chatbot(request: Request):
     """
     Chatbot endpoint to handle user queries.
