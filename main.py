@@ -18,7 +18,7 @@ index_name = os.getenv("index_name")
 app = FastAPI()
 origins = ["http://localhost", "http://44.215.20.161:3015"]
 app.add_middleware(
-    CORSMiddleware(app=app),
+    CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
