@@ -4,6 +4,7 @@ from uuid import uuid4
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
@@ -12,11 +13,23 @@ load_dotenv()
 openai_key = os.getenv("openai_key")
 pinecone_key = os.getenv("pinecone_key")
 index_name = os.getenv("index_name")
+
+
 app = FastAPI()
+origins = ["http://localhost", "http://44.215.20.161:3015"]
+app.add_middleware(
+    CORSMiddleware(),
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers="*",
+)
+
 # Set your API keys
 client = OpenAI(api_key=openai_key)
 pc = Pinecone(api_key=pinecone_key)
 index_name = index_name
+
 # Check if the Pinecone index exists, otherwise create it
 if index_name not in pc.list_indexes().names():
     pc.create_index(
