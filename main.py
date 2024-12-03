@@ -87,6 +87,7 @@ def generate_response(query, relevant_chunks):
     You are an assistant. Use the following information to answer the query:
     {context}
     
+    Attention: if the user query is out of the context then response with:- I'm here to assist you with questions related to Meda Medical Dashboard . Could you please rephrase your question or provide more context? If your query is outside my expertise, I recommend reaching out to the appropriate resource for further help.
     Query: {query}
     Answer:
     """
