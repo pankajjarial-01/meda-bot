@@ -1,19 +1,22 @@
+import json
 import os
-from uuid import uuid4
 
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from langchain_community.vectorstores import FAISS
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_text_splitters.latex import LatexTextSplitter
 from openai import OpenAI
-from pinecone import Pinecone, ServerlessSpec
 
 load_dotenv()
 openai_key = os.getenv("openai_key")
-pinecone_key = os.getenv("pinecone_key")
-index_name = os.getenv("index_name")
+os.environ["OPENAI_API_KEY"] = openai_key
 
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+model = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
 app = FastAPI()
 origins = ["http://localhost:3000", "http://44.215.20.161:3015"]
@@ -27,80 +30,40 @@ app.add_middleware(
 
 # Set your API keys
 client = OpenAI(api_key=openai_key)
-pc = Pinecone(api_key=pinecone_key)
-index_name = index_name
-
-# Check if the Pinecone index exists, otherwise create it
-if index_name not in pc.list_indexes().names():
-    pc.create_index(
-        index_name, dimension=1536, spec=ServerlessSpec(cloud="aws", region="us-east-1")
-    )  # 1536 is the dimensionality of text-embedding-ada-002
-index = pc.Index(index_name)
 
 
-# Function to chunk JSON data into key-value pairs
-def chunk_json(json_obj):
+def chunk_json(strdata):
     """Convert a JSON object into small chunks of key-value pairs."""
-    chunks = []
-    for key, value in json_obj.items():
-        if isinstance(value, dict):
-            chunks.extend(chunk_json(value))  # Recursively process nested JSON
-        else:
-            # Add key-value pairs as text
-            chunks.append(f"{key}: {str(value)}")
+    latex_splitter = LatexTextSplitter(chunk_size=512)
+    docs = latex_splitter.create_documents([strdata])
+    chunks = [doc.page_content for doc in docs]
+
     return chunks
 
 
-# Function to generate embeddings using OpenAI's API
-def get_embedding(text):
-    """Generate embeddings using OpenAI's API."""
-    response = client.embeddings.create(input=text, model="text-embedding-3-small")
-    return response.data[0].embedding
+def storeOnFaiss(strjosn):
+    chunks = chunk_json(strjosn)
+    vector_store = FAISS.from_texts(texts=chunks, embedding=embeddings)
+    vector_store.save_local("faiss_index")
 
 
-# Function to store chunks in Pinecone
-def store_chunks_in_pinecone(chunks, doc_id):
-    """Store chunk embeddings in Pinecone."""
-    for i, chunk in enumerate(chunks):
-        embedding = get_embedding(chunk)
-        metadata = {"chunk": chunk, "doc_id": doc_id}
-        index.upsert([(f"{doc_id}_{i}", embedding, metadata)])
-
-
-# Function to search Pinecone for relevant chunks
-def search_pinecone_with_query(query):
-    """Search Pinecone for relevant chunks using query embedding."""
-    query_embedding = get_embedding(query)
-    results = index.query(
-        vector=query_embedding,
-        top_k=5,  # Adjust based on your needs
-        include_metadata=True,
+def QAWithFaiss(query):
+    db = FAISS.load_local(
+        "faiss_index", embeddings, allow_dangerous_deserialization=True
     )
-    return [match["metadata"]["chunk"] for match in results["matches"]]
-
-
-# Function to generate a meaningful response using OpenAI GPT
-def generate_response(query, relevant_chunks):
-    """Construct a meaningful response using GPT."""
-    context = "\n".join(relevant_chunks)
+    docs = db.similarity_search(query=query, k=2)
+    text = [i.page_content for i in docs]
+    context = " ".join(text)
     prompt = f"""
-    You are an assistant. Use the following information to answer the query:
-    {context}
-    
-    Attention: if the user query is out of the context then response with:- I'm here to assist you with questions related to Meda Medical Dashboard . Could you please rephrase your question or provide more context? If your query is outside my expertise, I recommend reaching out to the appropriate resource for further help.
-    Query: {query}
-    Answer:
-    """
-    completion = client.chat.completions.create(
-        model="gpt-4o",  # Use the desired GPT model
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=150,
-        temperature=0.7,
-    )
-    return completion.choices[0].message
+        You are an assistant. Use the following information to answer the query:
+        {context}
+
+        Attention: if the user query is out of the context then response with:- I'm here to assist you with questions related to Meda Medical Dashboard . Could you please rephrase your question or provide more context? If your query is outside my expertise, I recommend reaching out to the appropriate resource for further help.
+        Query: {query}
+        Answer:
+        """
+    response = model.invoke(prompt).content
+    return response
 
 
 # Endpoint to insert data into Pinecone
@@ -111,16 +74,15 @@ async def insert_data(request: Request):
     :param doc_id: Unique ID for the document
     :param data: JSON data to store
     """
-    body = await request.json()
-    doc_id = body.get("id")
-    data = body.get("data")
+    jsondata = await request.json()
     try:
-        doc_id == uuid4()
-        chunks = chunk_json(data)
-        store_chunks_in_pinecone(chunks, doc_id)
+        strdata: str = json.dumps(jsondata)
+        storeOnFaiss(strdata)
         return {"message": "Data inserted successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500, detail=f"{e}, data type is:" + type(jsondata)
+        )
 
 
 # Endpoint to query the chatbot
@@ -131,15 +93,12 @@ async def chatbot(request: Request):
     :param query: User query
     """
     body = await request.json()
-    query = body.get("query")
+    query = body.get("question")
     try:
         # Search Pinecone for relevant data
-        relevant_chunks = search_pinecone_with_query(query)
+        answer = QAWithFaiss(query)
 
-        # Generate a meaningful response
-        response = generate_response(query, relevant_chunks)
-
-        return JSONResponse(content={"response": response.content})
+        return JSONResponse(content={"answer": answer}, status_code=200)
         # return {"response": response.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
