@@ -10,6 +10,9 @@ from langchain_community.vectorstores import FAISS
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters.latex import LatexTextSplitter
 from openai import OpenAI
+from duckduckgo_search import DDGS
+
+
 
 load_dotenv()
 openai_key = os.getenv("openai_key")
@@ -40,6 +43,15 @@ def chunk_json(strdata):
 
     return chunks
 
+# function for the google  serach
+def  google_search(query):
+    try:
+        # google search
+        results = DDGS().text(query, max_results=5)
+        return results
+    except Exception as e:
+        return False
+
 
 def storeOnFaiss(strjosn):
     chunks = chunk_json(strjosn)
@@ -53,12 +65,19 @@ def QAWithFaiss(query):
     )
     docs = db.similarity_search(query=query, k=2)
     text = [i.page_content for i in docs]
-    context = " ".join(text)
+
+    #  function for the  googel search
+    results=google_search(query=query)
+
+    # final  context
+    context = text+results
+
+
     prompt = f"""
         You are an assistant. Use the following information to answer the query:
         {context}
 
-        Attention: if the user query is out of the context then response with:- I'm here to assist you with questions related to Meda Medical Dashboard . Could you please rephrase your question or provide more context? If your query is outside my expertise, I recommend reaching out to the appropriate resource for further help.
+        Attention: if the user query is not related with  medical  sector then response with:- I'm here to assist you with questions related to Meda Medical Dashboard . Could you please rephrase your question or provide more context? If your query is outside my expertise, I recommend reaching out to the appropriate resource for further help.
         Query: {query}
         Answer:
         """

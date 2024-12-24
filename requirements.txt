@@ -10,6 +10,7 @@ charset-normalizer==3.4.0
 click==8.1.7
 dataclasses-json==0.6.7
 distro==1.9.0
+duckduckgo_search==7.0.2
 exceptiongroup==1.2.2
 faiss-cpu==1.9.0.post1
 fastapi==0.115.5
@@ -23,12 +24,13 @@ idna==3.10
 jiter==0.8.0
 jsonpatch==1.33
 jsonpointer==3.0.0
-langchain==0.3.10
-langchain-community==0.3.10
-langchain-core==0.3.22
+langchain==0.3.13
+langchain-community==0.3.13
+langchain-core==0.3.28
 langchain-openai==0.2.12
-langchain-text-splitters==0.3.2
+langchain-text-splitters==0.3.4
 langsmith==0.1.147
+lxml==5.3.0
 marshmallow==3.23.1
 multidict==6.1.0
 mypy-extensions==1.0.0
@@ -39,6 +41,7 @@ packaging==24.2
 pinecone==5.4.1
 pinecone-plugin-inference==3.0.0
 pinecone-plugin-interface==0.0.7
+primp==0.9.2
 propcache==0.2.1
 pydantic==2.10.2
 pydantic-settings==2.6.1
